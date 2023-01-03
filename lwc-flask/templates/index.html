@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0" />
+    <title>Lightweight Charts Customization Tutorial</title>
+    <!-- Adding Google Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet" />
+    <!-- Adding the standalone version of Lightweight charts -->
+    <script type="text/javascript" src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+        padding: 0;
+        margin: 0;
+        /* Add a background color to match the chart */
+        background-color: #222;
+      }
+
+      /* Styles for attribution message */
+      .lw-attribution {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        z-index: 3; /* place above the charts */
+        padding: 10px 0px 0px 12px;
+        font-family: "Roboto", sans-serif;
+        font-size: 0.8em;
+      }
+      .lw-attribution a {
+        cursor: pointer;
+        color: rgb(54, 116, 217);
+        opacity: 0.8;
+      }
+      .lw-attribution a:hover {
+        color: rgb(54, 116, 217);
+        opacity: 1;
+      }
+    </style>
+</head>
+
+<body>
+    <div id="container" style="position: absolute; width: 100%; height: 100%">
+        <!-- Lightweight Charts Attribution Message and Link -->
+        <div class="lw-attribution">
+            <a href="https://tradingview.github.io/lightweight-charts/">Powered by Lightweight Charts</a>
+        </div>
+    </div>
+    <script type="text/javascript">
+    // Function to generate a sample set of Candlestick datapoints
+    const flaskEndpoint = "http://127.0.0.1:5000"
+    const wsEndpoint = "ws://127.0.0.1:5001"
+
+    function generateCandlestickData() {
+        // return axios.get(flaskEndpoint + "/historicaldata").then(response => response.data)
+        try {
+            return axios({
+                    method: 'GET',
+                    url: flaskEndpoint + "/chart",
+                    crossOrigin: '*',
+                })
+                .then(response => response.data)
+        } catch (error) {
+            throw {
+                code: error.code,
+                message: error.message,
+                responseStatus: error.response ? error.status : null,
+                url: url,
+            };
+        }
+    }
+    const ws = new WebSocket(wsEndpoint);
+
+    generateCandlestickData()
+        .then(data => {
+            const responsedata = data
+            console.log(responsedata)
+            // Create the Lightweight Chart within the container element
+            const chart = LightweightCharts.createChart(
+                document.getElementById('container'), {
+                    layout: {
+                        background: { color: "#222" },
+                        textColor: "#C3BCDB",
+                    },
+                    grid: {
+                        vertLines: { color: "#444", visible: false },
+                        horzLines: { color: "#444", visible: false },
+                    },
+                }
+            );
+
+            // Setting the border color for the vertical axis
+            chart.priceScale()
+                .applyOptions({
+                    borderColor: "#71649C",
+                });
+
+            // Setting the border color for the horizontal axis
+            chart.timeScale()
+                .applyOptions({
+                    borderColor: "#71649C",
+                    timeVisible: true,
+                    secondsVisible: true,
+                });
+
+            // Adjust the starting bar width (essentially the horizontal zoom)
+            chart.timeScale()
+                .applyOptions({
+                    barSpacing: 10,
+                });
+
+            // Changing the font
+            chart.applyOptions({
+                layout: {
+                    fontFamily: "'Roboto', sans-serif",
+                },
+            });
+
+            // Get the current users primary locale
+            const currentLocale = window.navigator.languages[0];
+            // Create a number format using Intl.NumberFormat
+            const myPriceFormatter = Intl.NumberFormat(currentLocale, {
+                    style: "currency",
+                    currency: "INR", // Currency for data points
+                })
+                .format;
+
+            // Apply the custom priceFormatter to the chart
+            chart.applyOptions({
+                localization: {
+                    priceFormatter: myPriceFormatter,
+                },
+            });
+
+            // Customizing the Crosshair
+            chart.applyOptions({
+                crosshair: {
+                    // Change mode from default 'magnet' to 'normal'.
+                    // Allows the crosshair to move freely without snapping to datapoints
+                    mode: LightweightCharts.CrosshairMode.Normal,
+
+                    // Vertical crosshair line (showing Date in Label)
+                    vertLine: {
+                        // width: 8,
+                        color: "#9B7DFF",
+                        // color: "#C3BCDB44",
+                        // style: LightweightCharts.LineStyle.Solid,
+                        labelBackgroundColor: "#9B7DFF",
+                    },
+
+                    // Horizontal crosshair line (showing Price in Label)
+                    horzLine: {
+                        color: "#9B7DFF",
+                        labelBackgroundColor: "#9B7DFF",
+                    },
+                },
+            });
+
+            // Generate sample data to use within a candlestick series
+            // console.log(responsedata)
+            const candleStickData = responsedata.map((datapoint) => ({
+                time: datapoint.time,
+                open: datapoint.open,
+                high: datapoint.high,
+                low: datapoint.low,
+                close: datapoint.close,
+            }));
+            const volumeData = responsedata.map((datapoint) => ({
+                time: datapoint.time,
+                value: datapoint.volume,
+                color: datapoint.open > datapoint.close ? "rgb(225, 50, 85)" : datapoint.open < datapoint.close ? "rgb(54, 116, 217)" : 'black',
+            }));
+            // Convert the candlestick data for use with a line series
+            const lineData = candleStickData.map((datapoint) => ({
+                time: datapoint.time,
+                value: (datapoint.close + datapoint.open) / 2,
+            }));
+
+            const volumeSeries = chart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: {
+                    type: 'volume',
+                },
+                priceScaleId: '', // set as an overlay by setting a blank priceScaleId
+                // set the positioning of the volume series
+                scaleMargins: {
+                    top: 0.7, // highest point of the series will be 70% away from the top
+                    bottom: 0,
+                },
+            });
+            volumeSeries.setData(volumeData);
+
+            // Add an area series to the chart,
+            // Adding this before we add the candlestick chart
+            // so that it will appear beneath the candlesticks
+            const areaSeries = chart.addAreaSeries({
+                lastValueVisible: false, // hide the last value marker for this series
+                crosshairMarkerVisible: false, // hide the crosshair marker for this series
+                lineColor: "transparent", // hide the line
+                topColor: "rgba(56, 33, 110,0.6)",
+                bottomColor: "rgba(56, 33, 110, 0.1)",
+            });
+            // Set the data for the Area Series
+            areaSeries.setData(lineData);
+
+            // Create the Main Series (Candlesticks)
+            const mainSeries = chart.addCandlestickSeries();
+            // Set the data for the Main Series
+            mainSeries.setData(candleStickData);
+
+            // Changing the Candlestick colors
+            mainSeries.applyOptions({
+                wickUpColor: "rgb(54, 116, 217)",
+                upColor: "rgb(54, 116, 217)",
+                wickDownColor: "rgb(225, 50, 85)",
+                downColor: "rgb(225, 50, 85)",
+                borderVisible: false,
+            });
+
+            // Adjust the options for the priceScale of the mainSeries
+            mainSeries.priceScale()
+                .applyOptions({
+                    autoScale: false, // disables auto scaling based on visible content
+                    scaleMargins: {
+                        top: 0.1,
+                        bottom: 0.2,
+                    },
+                });
+
+
+            var currentMinuteTimestamp = Math.floor(currentMinute()
+                .getTime() / 1000);
+            var currentBar = {
+                open: null,
+                high: null,
+                low: null,
+                close: null,
+                volume: null,
+                color: null,
+                time: currentMinuteTimestamp,
+            };
+
+            var currentVol = {
+                volume: null,
+                color: null,
+                time: currentMinuteTimestamp,
+            };
+
+            function mergeTickToBar(price, volume) {
+                if (currentBar.open === null && volume === null) {
+                    currentBar.open = price;
+                    currentBar.high = price;
+                    currentBar.low = price;
+                    currentBar.close = price;
+                    currentVol.volume = volume;
+                    currentVol.color = currentBar.open > currentBar.close ? "rgb(225, 50, 85)" : currentBar.open < currentBar.close ? "rgb(54, 116, 217)" : 'black';
+                } else {
+                    currentBar.close = price;
+                    currentBar.high = Math.max(currentBar.high, price);
+                    currentBar.low = Math.min(currentBar.low, price);
+                    currentVol.volume += volume
+                    currentVol.color = currentBar.open > currentBar.close ? "rgb(225, 50, 85)" : currentBar.open < currentBar.close ? "rgb(54, 116, 217)" : 'black';
+                }
+                console.log(currentBar);
+                console.log(currentVol);
+                console.log(mainSeries);
+                console.log(volumeSeries);
+                mainSeries.update(currentBar);
+                volumeSeries.update(currentVol);
+            }
+
+            function currentMinute() {
+                var d = new Date();
+                d.setSeconds(0);
+                return d;
+            }
+
+            function nextMinute(time) {
+                time.setMinutes(time.getMinutes() + 1);
+                return time;
+            }
+
+
+            ws.onmessage = function (event) {
+
+                // Parse the data from the stream into a stock quote object
+                const ticks = JSON.parse(event.data);
+                // Just update The Values Here by replacing the previous content
+                console.log(ticks[0].last_price, ticks[0].volume_traded);
+                mergeTickToBar(ticks[0].last_price, ticks[0].volume_traded);
+                if (new Date()
+                    .getSeconds() === 0) {
+                    // move to next bar
+                    currentMinuteTimestamp = Math.floor(nextMinute(currentMinute)
+                        .getTime() / 1000);
+                    currentBar = {
+                        open: null,
+                        high: null,
+                        low: null,
+                        close: null,
+                        time: currentMinuteTimestamp,
+                    };
+                    var currentVol = {
+                        volume: null,
+                        color: null,
+                        time: currentMinuteTimestamp,
+                    };
+                }
+                console.log(currentBar);
+                console.log(currentVol);
+            }
+
+            chart.timeScale()
+                .fitContent();
+            // Adding a window resize event handler to resize the chart when
+            // the window size changes.
+            // Note: for more advanced examples (when the chart doesn't fill the entire window)
+            // you may need to use ResizeObserver -> https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver
+            window.addEventListener("resize", () => {
+                chart.resize(window.innerWidth, window.innerHeight);
+            });
+            chart.subscribeClick(function (param) {
+                console.log(`An user clicks at (${param.point.x}, ${param.point.y}) point, the time is ${param.time}`);
+            });
+            chart.unsubscribeClick(function (param) {
+                // Don’t get notified when a mouse clicks on a chart
+            });
+            chart.subscribeCrosshairMove(function (param) {
+                if (!param.point) {
+                    return;
+                }
+                if (param.time) {
+                    // const price = param.seriesPrices.get(this.series)
+                    // row.innerText = 'String' + '  ' + price.toFixed(2)
+                    // const volume = param.hoveredSeries.get(this.volumeSeries)
+                    const volume = param.seriesPrices.get(volumeSeries)
+                    const ohlc = param.seriesPrices.get(mainSeries)
+                    const dateFormat = new Date(param.time * 1000)
+                    const dateFormats = dateFormat.getUTCDate() + "/" + (dateFormat.getUTCMonth() + 1) + "/" + dateFormat.getUTCFullYear() + " " + dateFormat.getUTCHours() + ":" + dateFormat.getUTCMinutes() + ":" + dateFormat.getUTCSeconds()
+                    document.getElementsByClassName('lw-attribution')[0].innerText = `Time: ${dateFormats} | Open: ${ohlc.open.toFixed(2)} | High: ${ohlc.high.toFixed(2)} | Low: ${ohlc.low.toFixed(2)} | Close: ${ohlc.close.toFixed(2)} | Volume: ${volume}`
+                } else {
+                    console.log(`A user moved the crosshair to (${param.point.x}, ${param.point.y}) point, the time is ${param.time}`);
+                }
+
+            });
+            // chart.unsubscribeCrosshairMove(function (param) {
+            //     // Don’t get notified when a mouse moves on a chart
+            // });
+            // const barsInfo = series.barsInLogicalRange(chart.timeScale()
+            //     .getVisibleLogicalRange());
+            // console.log(barsInfo);
+            // const barsInfo = mainSeries.barsInLogicalRange(chart.timeScale()
+            //     .getVisibleLogicalRange());
+            // console.log(barsInfo);
+
+            // function onVisibleLogicalRangeChanged(newVisibleLogicalRange) {
+            //     const barsInfo = series.barsInLogicalRange(newVisibleLogicalRange);
+            //     // if there less than 50 bars to the left of the visible area
+            //     if (barsInfo !== null && barsInfo.barsBefore < 50) {
+            //         // try to load additional historical data and prepend it to the series data
+            //     }
+            // }
+
+            // chart.timeScale()
+            //     .subscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChanged);
+            // take a screenshot
+            // chart.takeScreenshot();
+            // two functions to access this price scale implicitly
+            // const coordinate = series.priceToCoordinate(100.5);
+            // const price = series.coordinateToPrice(324);
+            // chart.subscribeCrosshairMove((param) => {
+            //     console.log(param.hoveredMarkerId);
+            // });
+            // chart.subscribeClick((param) => {
+            //     console.log(param.hoveredMarkerId);
+            // });
+        })
+        .catch(err => console.log(err))
+    </script>
+</body>
+
+</html>
